@@ -1,0 +1,289 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo = TRUE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F)
+library(tidyverse) #data manipulation
+library(lubridate) # date manipulation
+library(forecast) # time series library
+library(TTR) # for Simple moving average function
+library(MLmetrics) # calculate error
+library(tseries) # adf.test
+library(TSA) #EACF
+library(fpp)
+library(padr)
+library(zoo)
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(imputeTS)
+library(quantmod)
+library(ggplot2)
+library(lubridate)
+library(skimr)
+library(readxl)
+library(devtools)
+library(smoothCV)
+```
+
+```{r}
+int <- read_excel("D:/SEMESTER 6/MPDW/ihsg_interpolasi.xlsx")
+locf <- read_excel("D:/SEMESTER 6/MPDW/ihsg_LOCF.xlsx")
+na <- read_excel("D:/SEMESTER 6/MPDW/ihsg_na.xlsx")
+```
+
+```{r}
+ggplot(int, aes(x = Date, y = JKSE.Close)) +
+    geom_line(col = "steelblue") +
+    labs(title = "Plot Time Series IHSG Interpolasi")+ theme_classic()+
+    xlab("Waktu")+ylab("IHSG Close")+theme_classic()
+```
+
+```{r}
+ggplot(na, aes(x = Date, y = JKSE.Close)) +
+    geom_line(col = "black") +
+    labs(title = "Plot Time Series IHSG")+ theme_classic()+
+    xlab("Waktu")+ylab("IHSG Close")+theme_classic()
+```
+```{r}
+ts.plot(na$JKSE.Close, col="black", xlab="Time Period ", ylab="IHSG Close", main= "Plot Timeseries", lwd=1.2)
+```
+
+
+```{r}
+ts.plot(int$JKSE.Close, col="red", xlab="Time Period ", ylab="IHSG Close", main= "Plot Timeseries", lwd=1.2)
+lines(locf[,2],col="green",lwd=1.2)
+lines(na[,2],col="black",lwd=1.2)
+legend("topleft",c("Interpolasi","LOCF"), lty=1, col=c("red","green"), cex=0.8)
+```
+
+2. Bagi data train pravaksin (2 Maret 2020-12 Januari 2021), postvaksin (13 Januari 2021-16 Maret 2022), campuran (2 Maret 2020-16 Maret 2022) (6)
+
+- pravaksin
+```{r}
+int1 <- head(int, 331)
+int1 <- ts(int1$JKSE.Close)
+locf1 <- head(locf, 331)
+locf1 <- ts(locf1$JKSE.Close)
+```
+interpolasi
+```{r}
+train.int1 <- head(int1, 317)
+test.int1 <- tail(int1, 14)
+```
+locf
+```{r}
+train.locf1 <- head(locf1, 317)
+test.locf1 <- tail(locf1, 14)
+```
+
+- postvaksin
+```{r}
+int2 <- tail(int, 443)
+int2 <- ts(int2$JKSE.Close)
+locf2 <- tail(locf, 443)
+locf2 <- ts(locf2$JKSE.Close)
+length(int2)-14
+```
+interpolasi
+```{r}
+train.int2 <- head(int2, 429)
+test.int2 <- tail(int2, 14)
+```
+locf
+```{r}
+train.locf2 <- head(locf2, 429)
+test.locf2 <- tail(locf2, 14)
+```
+
+
+- all
+```{r}
+int3 <- ts(int$JKSE.Close)
+locf3 <- ts(locf$JKSE.Close)
+```
+interpolasi
+```{r}
+train.int3 <- head(int3, 746)
+test.int3 <- tail(int3, 14)
+```
+locf
+```{r}
+train.locf3 <- head(locf3, 746)
+test.locf3 <- tail(locf3, 14)
+```
+
+```{r}
+palette <- c("black","blue","red")
+int %>%
+  mutate(Keterangan=
+           ifelse(Date<=as.Date('2021-01-12'),"Pravaksinasi",
+                  ifelse(Date<=as.Date('2022-03-17'),"Pascavaksinasi","Data test"))#segmentation segmentasi 
+  )%>% data.table::as.data.table()%>%
+  ggplot(aes(x=Date,y=JKSE.Close))+
+    geom_line(aes(color=Keterangan))+scale_color_manual(values=c("black","blue","red"))+
+    ggtitle("Split Data")+
+    xlab("Waktu")+ylab("IHSG Close")+theme_classic()
+```
+
+4. DES
+
+## Pravaksin Interpolasi
+
+```{r}
+DES.int1.opt <- HoltWinters(train.int1, gamma = F)
+DES.int1.opt
+```
+```{r}
+DES.int1 <- ES.grid(type = "DES", alphrange = seq(0.1,1,0.05), betarange = seq(0.01,1,0.05), nahead = 14, trainset = train.int1, testset = test.int1)
+DES.int1[order(DES.int1$MAPE),]
+```
+
+```{r}
+des.int1 <- HoltWinters(train.int1, alpha = 0.1, beta=0.06, gamma = F)
+fc.des1 <- predict(des.int1, n.ahead = 14)
+MAPE.int1 <- mean(abs((fc.des1 - test.int1)/test.int1)) * 100
+plot(int1,main="DES Pravaksin Interpolasi",
+     type="l",col="black",pch=12, ylab="IHSG Close Price",ylim=c(4000,7000))
+lines(des.int1$fitted[,2],type="l",col="green")
+lines(fc.des1,type="l",col="red")
+legend("topleft",c("Actual Data","Fitted Data","Forecast"),
+       col=c("black","green","red"),lty=1, cex=0.8)
+```
+
+## Pravaksin LOCF
+
+
+```{r}
+DES.locf1.opt <- HoltWinters(train.locf1, gamma = F)
+DES.locf1.opt
+```
+
+```{r}
+DES.locf1 <- ES.grid(type = "DES", alphrange = seq(0.1,1,0.05), betarange = seq(0.01,1,0.05), nahead = 14, trainset = train.locf1, testset = test.locf1)
+DES.locf1[order(DES.locf1$MAPE),]
+```
+
+```{r}
+des.locf1 <- HoltWinters(train.locf1, alpha = 0.1, beta=0.06, gamma = F)
+fc.des11 <- predict(des.locf1, n.ahead = 14)
+MAPE.locf1 <- mean(abs((fc.des11 - test.locf1)/test.locf1)) * 100
+plot(locf1,main="DES Pravaksin LOCF",
+     type="l",col="black",pch=12, ylab="IHSG Close Price",ylim=c(4000,7000))
+lines(des.locf1$fitted[,2],type="l",col="green")
+lines(fc.des11,type="l",col="red")
+legend("topleft",c("Actual Data","Fitted Data","Forecast"),
+       col=c("black","green","red"),lty=1, cex=0.8)
+```
+
+
+## Postvaksin Interpolasi
+
+```{r}
+DES.int2.opt <- HoltWinters(train.int2, gamma = F)
+DES.int2.opt
+```
+```{r}
+DES.int2 <- ES.grid(type = "DES", alphrange = seq(0.1,1,0.05), betarange = seq(0.01,1,0.05), nahead = 14, trainset = train.int2, testset = test.int2)
+DES.int2[order(DES.int2$MAPE),]
+```
+
+```{r}
+des.int2 <- HoltWinters(train.int2, alpha = 0.15, beta= 0.26, gamma = F)
+fc.des2 <- predict(des.int2, n.ahead = 14)
+MAPE.int2 <- mean(abs((fc.des2 - test.int2)/test.int2)) * 100
+plot(int2,main="DES Postvaksin Interpolasi",
+     type="l",col="black",pch=12, ylab="IHSG Close Price")
+lines(des.int2$fitted[,2],type="l",col="green")
+lines(fc.des2,type="l",col="red")
+legend("topleft",c("Actual Data","Fitted Data","Forecast"),
+       col=c("black","green","red"),lty=1, cex=0.8)
+```
+
+## Pravaksin LOCF
+
+
+```{r}
+DES.locf2.opt <- HoltWinters(train.locf2, gamma = F)
+DES.locf2.opt
+```
+
+```{r}
+DES.locf2 <- ES.grid(type = "DES",alphrange = seq(0.1,1,0.05), betarange = seq(0.01,1,0.05), nahead = 14, trainset = train.locf2, testset = test.locf2)
+DES.locf2[order(DES.locf2$MAPE),]
+```
+
+```{r}
+des.locf2 <- HoltWinters(train.locf2, alpha = 0.25, beta=0.11, gamma = F)
+fc.des22 <- predict(des.locf2, n.ahead = 14)
+MAPE.locf2 <- mean(abs((fc.des22 - test.locf2)/test.locf2)) * 100
+plot(locf2,main="DES Postvaksin LOCF",
+     type="l",col="black",pch=12, ylab="IHSG Close Price")
+lines(des.locf2$fitted[,2],type="l",col="green")
+lines(fc.des22,type="l",col="red")
+legend("topleft",c("Actual Data","Fitted Data","Forecast"),
+       col=c("black","green","red"),lty=1, cex=0.8)
+```
+
+
+
+## Campuran Interpolasi
+
+```{r}
+DES.int3.opt <- HoltWinters(train.int3, gamma = F)
+DES.int3.opt
+```
+```{r}
+DES.int3 <- ES.grid(type = "DES", alphrange = seq(0.1,1,0.05), betarange = seq(0.1,1,0.05), nahead = 14, trainset = train.int3, testset = test.int3)
+DES.int3[order(DES.int3$MAPE),]
+```
+
+```{r}
+des.int3 <- HoltWinters(train.int3, alpha = 0.2, beta=0.2, gamma = F)
+fc.des3 <- predict(des.int3, n.ahead = 14)
+MAPE.int3 <- mean(abs((fc.des3 - test.int3)/test.int3)) * 100
+plot(int3,main="DES Campuran Interpolasi",
+     type="l",col="black",pch=12, ylab="IHSG Close Price",ylim=c(4000,7000))
+lines(des.int3$fitted[,2],type="l",col="green")
+lines(fc.des3,type="l",col="red")
+legend("topleft",c("Actual Data","Fitted Data","Forecast"),
+       col=c("black","green","red"),lty=1, cex=0.8)
+```
+
+## Campuran LOCF
+
+```{r}
+DES.locf3.opt <- HoltWinters(train.locf3, gamma = F)
+DES.locf3.opt
+```
+
+```{r}
+DES.locf3 <- ES.grid(type = "DES", alphrange = seq(0.1,1,0.05), betarange = seq(0.1,1,0.05), nahead = 14, trainset = train.locf3, testset = test.locf3)
+DES.locf3[order(DES.locf3$MAPE),]
+```
+
+```{r}
+des.locf3 <- HoltWinters(train.locf3, alpha = 0.25, beta=0.1, gamma = F)
+fc.des33 <- predict(des.locf3, n.ahead = 14)
+MAPE.locf3 <- mean(abs((fc.des33 - test.locf3)/test.locf3)) * 100
+plot(locf3,main="DES Campuran LOCF",
+     type="l",col="black",pch=12, ylab="IHSG Close Price",ylim=c(4000,7000))
+lines(des.locf3$fitted[,2],type="l",col="green")
+lines(fc.des33,type="l",col="red")
+legend("topleft",c("Actual Data","Fitted Data","Forecast"),
+       col=c("black","green","red"),lty=1, cex=0.8)
+```
+
+
+5. MAPE
+
+
+# Nilai Akurasi
+
+```{r}
+err <- data.frame(Segmen=c("Pravaksin","Postvaksin","Campuran"),
+                  Interpolasi=c(MAPE.int1,MAPE.int2,MAPE.int3),
+                  LOCF=c(MAPE.locf1,MAPE.locf2,MAPE.locf3))
+err
+```
